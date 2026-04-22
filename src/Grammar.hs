@@ -92,23 +92,22 @@ isLeftLinear (LeftLinearAlt _ _) = True
 isLeftLinear _ = False
 
 validateGrammar :: Grammar -> GrammarType -> Either String ()
-validateGrammar grammar gtype =
-    let allAlternatives = concat (Map.elems grammar)
-        invalidAlts = filter (not . matchesType gtype) allAlternatives
-    in if not (null invalidAlts)
-        then Left ("Alternatives do not match grammar type: " ++ show invalidAlts)
-        else
-            let defined = Map.keysSet grammar
-                used = Set.unions (map alternativesUsed allAlternatives)
-                undefinedNTs = Set.difference used defined
-            in if not (Set.null undefinedNTs)
-                then Left ("Undefined nonterminals: " ++ show (Set.toList undefinedNTs))
-                else
-                    let emptyNTs = [nt | (nt, alts) <- Map.toList grammar, null alts]
-                    in if null emptyNTs || gtype == LeftLinear
-                        then Right ()
-                        else Left ("Empty alternatives only allowed in left-linear grammar, found for: " ++ show emptyNTs)
+validateGrammar grammar gtype
+    | not (null invalidAlts) =
+        Left ("Alternatives do not match grammar type: " ++ show invalidAlts)
+    | not (Set.null undefinedNTs) =
+        Left ("Undefined nonterminals: " ++ show (Set.toList undefinedNTs))
+    | not (null emptyNTs) && gtype /= LeftLinear =
+        Left ("Empty alternatives only allowed in left-linear grammar, found for: " ++ show emptyNTs)
+    | otherwise = Right ()
   where
+    allAlternatives = concat (Map.elems grammar)
+    invalidAlts = filter (not . matchesType gtype) allAlternatives
+    defined = Map.keysSet grammar
+    used = Set.unions (map alternativesUsed allAlternatives)
+    undefinedNTs = Set.difference used defined
+    emptyNTs = [nt | (nt, alts) <- Map.toList grammar, null alts]
+
     matchesType RightLinear (RightLinearAlt _ _) = True
     matchesType RightLinear (TerminalOnly _)     = True
     matchesType LeftLinear  (LeftLinearAlt _ _)  = True

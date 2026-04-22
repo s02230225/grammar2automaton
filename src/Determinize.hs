@@ -64,9 +64,9 @@ nfaToDFA nfa =
             let fromState = setName current
                 step acc symbol =
                     let nextSet = move current symbol
-                    in if Set.null nextSet
-                        then acc
-                        else (symbol, nextSet) : acc
+                    in case Set.null nextSet of
+                        True -> acc
+                        False -> (symbol, nextSet) : acc
                 nonEmptyMoves = foldl' step [] alphabet
                 insertTransition acc (symbol, nextSet) =
                     Map.insert (fromState, symbol) (setName nextSet) acc
