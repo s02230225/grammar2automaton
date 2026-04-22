@@ -5,7 +5,7 @@ import System.Environment (getArgs)
 import System.IO (hPutStrLn, stderr)
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (intercalate, sort)
+import Data.List (intercalate)
 
 import Grammar
 import Automaton
@@ -22,49 +22,53 @@ main = do
     putStrLn "################################################################################"
     putStrLn $ "[1] Входная грамматика:"
     putStrLn $ "    \"" ++ trimmed ++ "\""
-    
-    let grammar = parseGrammar trimmed
-    let gtype = getGrammarType grammar
-    case validateGrammar grammar gtype of
-        Left err -> hPutStrLn stderr $ "Ошибка валидации: " ++ err
-        Right () -> do
-            putStrLn ""
-            putStrLn "[2] Результат парсинга:"
-            putStrLn $ "    Тип: " ++ show gtype
-            let startSym = case gtype of
-                                RightLinear -> 'H'
-                                LeftLinear  -> 'S'
-            putStrLn $ "    Начальный символ: " ++ [startSym]
-            putStrLn "    Продукции:"
-            mapM_ (putStrLn . ("        " ++)) (formatProductions grammar)
-            
-            let nfa = grammarToNFA grammar gtype
-            putStrLn ""
-            putStrLn "[3] Недетерминированный конечный автомат (НКА):"
-            putStrLn $ "    Начальное состояние: " ++ show (nfaStart nfa)
-            putStrLn $ "    Финальные состояния: " ++ formatStateSet (nfaAccept nfa)
-            putStrLn "    Переходы:"
-            mapM_ (putStrLn . ("        " ++)) (formatNFATransitions nfa)
-            
-            let det = isDeterministic nfa
-            putStrLn ""
-            putStrLn $ "[4] Проверка детерминированности: " ++ detMessage det
-            
-            let dfa = nfaToDFA nfa
-            let resultEdges = dfaToEdges dfa
-            
-            putStrLn ""
-            putStrLn "[5] Детерминированный конечный автомат (ДКА):"
-            putStrLn $ "    Начальное состояние: " ++ show (dfaStart dfa)
-            putStrLn $ "    Финальные состояния:"
-            mapM_ (putStrLn . ("        " ++)) (map show $ Set.toList $ dfaAccept dfa)
-            putStrLn "    Переходы:"
-            mapM_ (putStrLn . ("        " ++)) (formatDFATransitions dfa)
-            
-            putStrLn ""
-            putStrLn "[6] Результат (список рёбер):"
-            putStr $ edgesToString resultEdges
-            putStrLn "################################################################################"
+
+    case parseGrammar trimmed of
+        Left err -> hPutStrLn stderr $ "Ошибка разбора: " ++ err
+        Right grammar ->
+            case getGrammarType grammar of
+                Left err -> hPutStrLn stderr $ "Ошибка типа грамматики: " ++ err
+                Right gtype ->
+                    case validateGrammar grammar gtype of
+                        Left err -> hPutStrLn stderr $ "Ошибка валидации: " ++ err
+                        Right () -> do
+                            putStrLn ""
+                            putStrLn "[2] Результат парсинга:"
+                            putStrLn $ "    Тип: " ++ show gtype
+                            let startSym = case gtype of
+                                                RightLinear -> 'H'
+                                                LeftLinear  -> 'S'
+                            putStrLn $ "    Начальный символ: " ++ [startSym]
+                            putStrLn "    Продукции:"
+                            mapM_ (putStrLn . ("        " ++)) (formatProductions grammar)
+
+                            let nfa = grammarToNFA grammar gtype
+                            putStrLn ""
+                            putStrLn "[3] Недетерминированный конечный автомат (НКА):"
+                            putStrLn $ "    Начальное состояние: " ++ show (nfaStart nfa)
+                            putStrLn $ "    Финальные состояния: " ++ formatStateSet (nfaAccept nfa)
+                            putStrLn "    Переходы:"
+                            mapM_ (putStrLn . ("        " ++)) (formatNFATransitions nfa)
+
+                            let det = isDeterministic nfa
+                            putStrLn ""
+                            putStrLn $ "[4] Проверка детерминированности: " ++ detMessage det
+
+                            let dfa = nfaToDFA nfa
+                            let resultEdges = dfaToEdges dfa
+
+                            putStrLn ""
+                            putStrLn "[5] Детерминированный конечный автомат (ДКА):"
+                            putStrLn $ "    Начальное состояние: " ++ show (dfaStart dfa)
+                            putStrLn $ "    Финальные состояния:"
+                            mapM_ (putStrLn . ("        " ++)) (map show $ Set.toList $ dfaAccept dfa)
+                            putStrLn "    Переходы:"
+                            mapM_ (putStrLn . ("        " ++)) (formatDFATransitions dfa)
+
+                            putStrLn ""
+                            putStrLn "[6] Результат (список рёбер):"
+                            putStr $ edgesToString resultEdges
+                            putStrLn "################################################################################"
 
 detMessage :: Bool -> String
 detMessage True  = "ДА"

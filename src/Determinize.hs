@@ -6,7 +6,7 @@ module Determinize
 
 import qualified Data.Map as Map
 import qualified Data.Set as Set
-import Data.List (intercalate, sort)
+import Data.List (foldl', intercalate, sort)
 import Automaton
 
 isDeterministic :: NFA -> Bool
@@ -14,64 +14,63 @@ isDeterministic nfa = all ((<= 1) . Set.size) (Map.elems $ nfaTransitions nfa)
 
 nfaToDFA :: NFA -> DFA
 nfaToDFA nfa =
-    let alphabet = Set.toList $ Set.map snd $ Map.keysSet $ nfaTransitions nfa
-        
-        transition states sym = Set.unions
-            [ Map.findWithDefault Set.empty (st, sym) (nfaTransitions nfa)
-            | st <- Set.toList states
-            ]
-        
-        setName s = case Set.toList s of
-            [] -> State "{}"
-            [single] -> single
-            multiple -> State $ "{" ++ intercalate "," (sort $ map (\(State str) -> str) multiple) ++ "}"
-        
-        startSet = Set.singleton (nfaStart nfa)
+    let startSet = Set.singleton (nfaStart nfa)
         startName = setName startSet
-        
-        build processed [] trans = (processed, trans)
-        build processed ((set, name) : queue) trans =
-            let newTrans = 
-                    [ ((name, sym), setName nextSet)
-                    | sym <- alphabet
-                    , let nextSet = transition set sym
-                    , not (Set.null nextSet)
-                    ]
-                newMappings = Map.fromList newTrans
-                allTrans = Map.union newMappings trans
-                nextSets = [ (nextSet, setName nextSet)
-                           | (_, nextSet) <- map (\((_, s), n) -> (s, readSet n)) newTrans
-                           , not (nextSet `Set.member` processed)
-                           ]
-                newProcessed = Set.insert set processed
-                newQueue = queue ++ nextSets
-            in build newProcessed newQueue allTrans
-        
-        readSet (State s) = 
-            case s of
-                '{' : rest ->
-                    case reverse rest of
-                        '}' : revBody -> Set.fromList $ map State $ splitOnComma $ reverse revBody
-                        _ -> Set.singleton (State s)
-                _ -> Set.singleton (State s)
-        
-        splitOnComma str = case break (== ',') str of
-            (tok, "") -> [tok]
-            (tok, _:rest) -> tok : splitOnComma rest
-        
-        (allSets, transitions) = build Set.empty [(startSet, startName)] Map.empty
-        
+
+        (allSets, transitions) = buildDFA Set.empty [startSet] Map.empty
+
         acceptDFA = Set.fromList
-            [ name
-            | set <- Set.toList allSets
-            , let name = setName set
-            , not (Set.null (Set.intersection set (nfaAccept nfa)))
+            [ setName stateSet
+            | stateSet <- Set.toList allSets
+            , not (Set.null (Set.intersection stateSet (nfaAccept nfa)))
             ]
-        
-        statesDFA = Set.fromList $ map setName (Set.toList allSets)
+        statesDFA = Set.map setName allSets
     in DFA
         { dfaStates = statesDFA
         , dfaStart = startName
         , dfaAccept = acceptDFA
         , dfaTransitions = transitions
         }
+  where
+    alphabet :: [Symbol]
+    alphabet = Set.toList (Set.map snd (Map.keysSet (nfaTransitions nfa)))
+
+    move :: Set.Set State -> Symbol -> Set.Set State
+    move states symbol =
+        Set.unions
+            [ Map.findWithDefault Set.empty (state, symbol) (nfaTransitions nfa)
+            | state <- Set.toList states
+            ]
+
+    setName :: Set.Set State -> State
+    setName stateSet =
+        case Set.toList stateSet of
+            [] -> State "{}"
+            [single] -> single
+            many ->
+                let names = [name | State name <- many]
+                    sortedNames = sort names
+                in State ("{" ++ intercalate "," sortedNames ++ "}")
+
+    buildDFA
+        :: Set.Set (Set.Set State)
+        -> [Set.Set State]
+        -> Map.Map (State, Symbol) State
+        -> (Set.Set (Set.Set State), Map.Map (State, Symbol) State)
+    buildDFA processed [] trans = (processed, trans)
+    buildDFA processed (current:queue) trans
+        | current `Set.member` processed = buildDFA processed queue trans
+        | otherwise =
+            let fromState = setName current
+                step acc symbol =
+                    let nextSet = move current symbol
+                    in if Set.null nextSet
+                        then acc
+                        else (symbol, nextSet) : acc
+                nonEmptyMoves = foldl' step [] alphabet
+                insertTransition acc (symbol, nextSet) =
+                    Map.insert (fromState, symbol) (setName nextSet) acc
+                trans' = foldl' insertTransition trans nonEmptyMoves
+                processed' = Set.insert current processed
+                nextQueue = queue ++ [nextSet | (_, nextSet) <- reverse nonEmptyMoves]
+            in buildDFA processed' nextQueue trans'
